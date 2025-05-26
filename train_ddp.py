@@ -34,6 +34,10 @@ parser.add_argument('--batch_size', type=int, default=2, help='training batch si
 parser.add_argument('--epochs', type=int, default=20, help='number of epochs to train for')
 parser.add_argument('--lr', type=float, default=1e-4, help='learning rate, default=0.0001')
 parser.add_argument('--num_points', type=int, default=3, help='number of point prompts used during training')
+parser.add_argument('--num_points_test', type=int, default=3, help='number of point prompts used during validation') #add
+parser.add_argument('--train_num', type=int, default=2600, help='number of training data') #add
+parser.add_argument('--val_num', type=int, default=2600, help='number of validation data') #add
+parser.add_argument('--seed', type=int, default=1, help='seed') #add
 
 parser.add_argument("--continue_training", action='store_true', help='continue training using specific experiment checkpoint')
 parser.add_argument("--load_model", type=str, default=None, help='initialize model checkpoint using pretrained model')
@@ -41,6 +45,8 @@ parser.add_argument("--exp_name", type=str, default="", help='experiment name wh
 parser.add_argument("--model_size", type=str, default="l", help='size of ViT model in current RobustSAM architecture')
 parser.add_argument("--data_dir", type=str, default="data/all_data", help='data root')
 parser.add_argument("--save_dir", type=str, default="checkpoints", help='folder to save your checkpoint')
+parser.add_argument("--val_degraded_type", type=str, default="clear", help='degraded type using during validation')
+
 
 
 parser.add_argument(
@@ -79,7 +85,31 @@ parser.add_argument(
 
 opt = parser.parse_args()
 
+#勾配のチェック
+def check_gradient_update(model):
+    for name, param in model.module.named_parameters():
+        print(name,param.requires_grad)
+
+# 勾配をフリーズする関数
+def freeze_gradient_update(model):#add
+    for name, param in model.module.named_parameters():
+        if 'image_encoder' in name:
+            param.requires_grad = False
+        elif 'prompt_encoder' in name:
+            param.requires_grad = False
+        elif 'mask_decoder.transformer' in name:
+            param.requires_grad = False
+        elif 'mask_decoder.mask_tokens' in name:
+            param.requires_grad = False
+        elif 'mask_decoder.iou_token' in name:
+            param.requires_grad = False
+        elif 'mask_decoder.output_hypernetworks_mlps' in name:
+            param.requires_grad = False
+        elif 'mask_decoder.iou_prediction_head' in name:
+            param.requires_grad = False
+
 def main(opt):   
+    #print("cuda check", torch.cuda.is_available())
     if opt.exp_name == "":
         print('Please enter the experiment name!!!')
         # breakpoint()
@@ -148,7 +178,7 @@ def main_worker(gpu, ngpus_per_node, opt):
         print('Train from scratch ... ')
         
     model = sam_model_registry["vit_{}".format(opt.model_size)](opt=opt, checkpoint=model_sam_path, train=train_flag)    
-
+    
     if opt.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
@@ -200,9 +230,23 @@ def main_worker(gpu, ngpus_per_node, opt):
     val_loader = DataLoader(val_set, batch_size=opt.batch_size, shuffle=(val_sampler is None),
                             num_workers=opt.workers, pin_memory=True, sampler=val_sampler, drop_last=True)
 
-    optimizer = optim.Adam(model.parameters(), lr=opt.lr, weight_decay=1e-5)
+    #optimizer = optim.Adam(model.parameters(), lr=opt.lr, weight_decay=1e-5)
+    params_to_learn = [{'params':model.module.mask_decoder.degradation_prediction.parameters()},
+                       {'params':model.module.mask_decoder.degradation_prediction_fainal_image.parameters()},
+                       {'params':model.module.mask_decoder.degradation_prediction_mask.parameters()},
+                       {'params':model.module.mask_decoder.fourier_mask_features.downsample_layer.parameters()},
+                       {'params':model.module.mask_decoder.fourier_first_layer_features.upsample_layer.parameters()},
+                       {'params':model.module.mask_decoder.fourier_last_layer_features.upsample_layer.parameters()}
+                       ]#この中に学習したいパラメータを入れる
+    
+                       #{'params':model.module.mask_decoder.fourier_mask_features.downsample_layer.parameters()},
+                       #{'params':model.module.mask_decoder.fourier_first_layer_features.upsample_layer.parameters()},
+                       #{'params':model.module.mask_decoder.fourier_last_layer_features.upsample_layer.parameters()},
+
+    optimizer = optim.Adam(params_to_learn, lr=opt.lr, weight_decay=1e-5)
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, 10)
     best_loss = 9999.
+    best_iou = 0. #add
     
     try:
         sam_transform = ResizeLongestSide(model.module.image_encoder.img_size)
@@ -214,18 +258,34 @@ def main_worker(gpu, ngpus_per_node, opt):
     print('====================Start training======================')
     print('Model checkpoint will be saved to {} ... '.format(opt.save_dir))
     os.makedirs(opt.save_dir, exist_ok=True)
+
+    #freeze_gradient_update(model) #add
+
     
+    # add
+    print('==> RobustSAM Validation')
+    if opt.gpu == 0:
+        epoch = 0
+        val_loss, val_iou = validate(opt, epoch, val_loader, sam_transform, model)
+        
+        print('RobustSAM Validation loss:{}'.format(val_loss))
+        print('RobustSAM Validation iou:{}'.format(val_iou))
+    #
+    
+
     for epoch in range(1, opt.epochs + 1):  
         print('Epoch {} ...'.format(epoch))  
             
         print('==> Training')
+        #check_gradient_update(model)#add
         train(opt, epoch, optimizer, train_loader, sam_transform, model) 
 
         if opt.gpu == 0:
             print('==> Validation')
-            val_loss = validate(opt, epoch, val_loader, sam_transform, model)
+            val_loss, val_iou = validate(opt, epoch, val_loader, sam_transform, model)
         
             print('Validation loss:{}'.format(val_loss))
+            print('Validation iou:{}'.format(val_iou))
             print('Best val loss so far: {}'.format(best_loss))
     
             if val_loss < best_loss:
@@ -234,6 +294,12 @@ def main_worker(gpu, ngpus_per_node, opt):
                 model_saved_path = '{}/{}_best.pth'.format(opt.save_dir, opt.exp_name)
                 torch.save(model.state_dict(), model_saved_path)  
                 print('Current best model checkpoint saved to {}'.format(model_saved_path)) 
+            
+            #add
+            if val_iou > best_iou:
+                best_iou = val_iou
+            print('Best val iou so far: {}'.format(best_iou))
+            #
     
     if opt.gpu == 0:          
         print('Training complete! Saving last model!')

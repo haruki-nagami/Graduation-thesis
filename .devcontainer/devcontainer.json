@@ -1,0 +1,17 @@
+{
+    "name": "My Dev Container",
+    "features": {},
+    // "dockerComposeFile":"../compose.yaml",
+    // "workspaceFolder": "/workdir",
+    // "service": "robustsam",
+    "image": "docker.io/library/robustsam-robustsam:latest",
+    "postCreateCommand": "pip install --user ipykernel",
+    "customizations":{
+        "vscode": {
+            "extensions":[
+                "ms-python.python",
+                "ms-toolsai.jupyter"
+            ]
+        }
+    }
+}
