@@ -151,7 +151,7 @@ class SamPredictor:
             mask_input_torch = torch.as_tensor(mask_input, dtype=torch.float, device=self.device)
             mask_input_torch = mask_input_torch[None, :, :, :]
 
-        masks, iou_predictions, low_res_masks = self.predict_torch(
+        masks, iou_predictions, low_res_masks, alfa, beta, gamma = self.predict_torch(
             coords_torch,
             labels_torch,
             box_torch,
@@ -164,7 +164,7 @@ class SamPredictor:
         iou_predictions_np = iou_predictions[0].detach().cpu().numpy()
         low_res_masks_np = low_res_masks[0].detach().cpu().numpy()
         
-        return masks, iou_predictions, low_res_masks
+        return masks, iou_predictions, low_res_masks, alfa, beta, gamma
 
     # @torch.no_grad()
     def predict_torch(
@@ -227,13 +227,14 @@ class SamPredictor:
         )
 
         # Predict masks
-        low_res_masks, iou_predictions, _, _ = self.model.mask_decoder(
+        low_res_masks, iou_predictions, _, _ , alfa, beta, gamma= self.model.mask_decoder(
             image_embeddings=self.features[0],
             image_pe=self.model.prompt_encoder.get_dense_pe(),
             sparse_prompt_embeddings=sparse_embeddings,
             dense_prompt_embeddings=dense_embeddings,
             encoder_features=self.features[1][0].unsqueeze(0),
-            multimask_output=multimask_output      
+            multimask_output=multimask_output,
+            clear = False      
         )
         
         # Upscale the masks to the original image resolution
@@ -242,7 +243,7 @@ class SamPredictor:
         if not return_logits:
             masks = masks > self.model.mask_threshold
             
-        return masks, iou_predictions, low_res_masks
+        return masks, iou_predictions, low_res_masks, alfa, beta, gamma
 
     def get_image_embedding(self) -> torch.Tensor:
         """

@@ -31,36 +31,86 @@ def transform(case, path):
 
 
 def snow(image):
-    transform = A.Compose(
-        [A.RandomSnow(brightness_coeff=1.0, snow_point_lower=0.3, snow_point_upper=0.7, p=1)],
-    )
-
+    transform = A.Compose([
+        A.RandomSnow(
+            brightness_coeff=1.5,
+            snow_point_lower=0.4,
+            snow_point_upper=0.7,
+            p=1
+        )
+    ])
     image = transform(image=image)['image']
 
-    aug = iaa.Snowflakes(density=0.35, flake_size=(0.6, 0.8), speed=(0.01, 0.015), angle=0)
-    image = aug.augment_image(image)   
+    aug = iaa.Snowflakes(
+        density=0.5,
+        flake_size=(0.6, 1.0),
+        speed=(0.02, 0.03),
+        angle=(-10, 10)
+    )
+    image = aug.augment_image(image)
     return image
+
+
+# def snow(image):
+#     transform = A.Compose(
+#         [A.RandomSnow(brightness_coeff=1.0, snow_point_lower=0.3, snow_point_upper=0.7, p=1)],
+#     )
+
+#     image = transform(image=image)['image']
+
+#     aug = iaa.Snowflakes(density=0.35, flake_size=(0.6, 0.8), speed=(0.01, 0.015), angle=0)
+#     image = aug.augment_image(image)   
+#     return image
 
 def fog(image):
-    aug = iaa.Fog(seed=1234)
+    # imgaugのFogはやや軽めのエフェクト
+    aug = iaa.Fog(1234)
     image = aug.augment_image(image)   
 
-    fog_coef_lower = 0.1
-    fog_coef_upper = 0.2
-    alpha_coef = 0.08
-    transform = A.Compose(
-        [A.RandomFog(fog_coef_lower=fog_coef_lower, fog_coef_upper=fog_coef_upper, alpha_coef=alpha_coef, p=1)],
-    )    
-    image = transform(image=image)
-    image = image['image'] 
-
+    # albumentationsのFogを濃く設定して劣化度アップ
+    transform = A.Compose([
+        A.RandomFog(
+            fog_coef_lower=0.6,   # 霧の濃さ（低くても0.5）
+            fog_coef_upper=0.9,   # 最大の霧の濃さ
+            alpha_coef=0.30,       # 白さ（不透明度）を高く
+            p=1
+        )
+    ])    
+    image = transform(image=image)['image']
     return image
+
+
+
+# def fog(image):
+#     aug = iaa.Fog(seed=1234)
+#     image = aug.augment_image(image)   
+
+#     fog_coef_lower = 0.1
+#     fog_coef_upper = 0.2
+#     alpha_coef = 0.08
+#     transform = A.Compose(
+#         [A.RandomFog(fog_coef_lower=fog_coef_lower, fog_coef_upper=fog_coef_upper, alpha_coef=alpha_coef, p=1)],
+#     )    
+#     image = transform(image=image)
+#     image = image['image'] 
+
+#     return image
 
 def rain(image):
-    aug = iaa.Rain(drop_size=(0.40, 0.50), speed=(0.05, 0.1))
+    aug = iaa.Rain(
+        drop_size=(0.6, 0.7),     # 大きな雨粒
+        speed=(0.05, 0.1),        # 速く落ちる → ブレが強い
+    )
     image = aug.augment_image(image)
-    
     return image
+
+
+
+# def rain(image):
+#     aug = iaa.Rain(drop_size=(0.40, 0.50), speed=(0.05, 0.1))
+#     image = aug.augment_image(image)
+    
+#     return image
 
 def gauss_noise(image):
     var = (250, 260)
@@ -218,13 +268,16 @@ image_list = sorted(glob(os.path.join(image_path, '*jpg')))
 print('Number of images: {}'.format(len(image_list)))
 
 if opt.case is None:
-    degraded_list = ['snow', 'fog', 'rain', 'gauss_noise', 'ISO_noise', 'impulse_noise', 'resampling_blur', 
-                    'motion_blur', 'zoom_blur', 'color_jitter', 'compression', 'elastic_transform',
-                    'frosted_glass_blur', 'brightness', 'contrast' ]
+    # degraded_list = ['snow', 'fog', 'rain', 'gauss_noise', 'ISO_noise', 'impulse_noise', 'resampling_blur', 
+    #                 'motion_blur', 'zoom_blur', 'color_jitter', 'compression', 'elastic_transform',
+    #                 'frosted_glass_blur', 'brightness', 'contrast' ]
+    
+    degraded_list = ['rain']
+    #degraded_list = ['brightness']
 
 else: 
-    degraded_list = [case]
-    print('Processing {} only!'.format(case))
+    degraded_list = [opt.case]
+    print('Processing {} only!'.format(opt.case))
 
 
 for j, degraded_type in enumerate(degraded_list):
@@ -233,12 +286,12 @@ for j, degraded_type in enumerate(degraded_list):
     os.makedirs(save_folder, exist_ok=True)
     print('Generating {} images. Degraded images will be saved to {} ...'.format(degraded_type, save_folder))
     
-    for i, path in enumerate(tqdm(image_list)):  
-        augmented_image = transform(case, path)
-        fname = path.split('/')[-1]
-        save_path = os.path.join(save_folder, fname)
-        augmented_image = cv2.cvtColor(augmented_image, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(save_path, augmented_image)
+    for i, path in enumerate(tqdm(image_list)):
+            augmented_image = transform(case, path)
+            fname = path.split('/')[-1]
+            save_path = os.path.join(save_folder, fname)
+            augmented_image = cv2.cvtColor(augmented_image, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(save_path, augmented_image)
 
 
 

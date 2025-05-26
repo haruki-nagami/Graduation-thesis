@@ -101,6 +101,7 @@ def _build_sam(
             iou_head_depth=3,
             iou_head_hidden_dim=256,
             vit_dim = encoder_embed_dim,
+            image_embedding_size = image_embedding_size, #add
         ),
         pixel_mean=[123.675, 116.28, 103.53],
         pixel_std=[58.395, 57.12, 57.375],

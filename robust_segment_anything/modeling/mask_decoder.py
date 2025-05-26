@@ -25,7 +25,8 @@ class MaskDecoder(nn.Module):
         activation: Type[nn.Module] = nn.GELU,
         iou_head_depth: int = 3,
         iou_head_hidden_dim: int = 256,
-        vit_dim: int=1024
+        vit_dim: int=1024,
+        image_embedding_size: int=64
     ) -> None:
         """
         Predicts masks given an image and prompt embeddings, using a
@@ -86,7 +87,14 @@ class MaskDecoder(nn.Module):
         self.fourier_last_layer_features = LastLayerFeatureBlock(transformer_dim=transformer_dim)
         
         # AOTG
-        self.custom_token_block = TokenBlock(input_dim=self.num_mask_tokens, mlp_dim=transformer_dim // self.num_mask_tokens)        
+        self.custom_token_block = TokenBlock(input_dim=self.num_mask_tokens, mlp_dim=transformer_dim // self.num_mask_tokens) 
+
+        # add (create alpha and beta and gamma)
+        self.raw_alpha = nn.Parameter(torch.tensor(0.0))
+        self.alpha = torch.sigmoid(self.raw_alpha)
+        self.degradation_prediction = DegradationPredictBlock(image_embedding_size, transformer_dim) 
+        self.degradation_prediction_fainal_image = DegradationPredictBlock_final_image(image_embedding_size, transformer_dim)
+        self.degradation_prediction_mask = DegradationPredictBlock_mask(image_embedding_size, transformer_dim)      
 
     def forward(
         self,
@@ -97,7 +105,7 @@ class MaskDecoder(nn.Module):
         multimask_output: bool,
         encoder_features: torch.Tensor, #TODO:
         robust_token_only: bool = False,
-        clear: bool = True,
+        clear: bool = False,#Falseにした，すべての入力をAMFGやAOTGに通すため
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Predict masks given image and prompt embeddings.
@@ -116,13 +124,27 @@ class MaskDecoder(nn.Module):
         """
         early_features = encoder_features[0].permute(0, 3, 1, 2) 
 
+        alpha = self.degradation_prediction(image_embeddings)[0] #add
+        beta = self.degradation_prediction_fainal_image(image_embeddings)[0]
+
         # pass image features of different level through AMFG
-        complementary_features = self.fourier_first_layer_features(early_features, clear=clear) 
-        final_image_embeddings = self.fourier_last_layer_features(image_embeddings, clear=clear)
+        complementary_features = self.fourier_first_layer_features(alpha, early_features, clear=clear) 
+        final_image_embeddings = self.fourier_last_layer_features(beta, image_embeddings, clear=clear)
+        
+        """
+        #add
+        if clear==False:
+            complementary_features_clear = self.fourier_first_layer_features(early_features, clear=True) 
+            final_image_embeddings_clear = self.fourier_last_layer_features(image_embeddings, clear=True)
+            complementary_features = alpha * complementary_features + (1-alpha) * complementary_features_clear
+            final_image_embeddings = alpha * final_image_embeddings + (1-alpha) * final_image_embeddings_clear
+        #
+        """
 
         robust_features = complementary_features + final_image_embeddings # fuse image's complementary features and final embeddings 
 
-        masks, iou_pred, upscaled_embedding_robust, robust_token, token_att_map = self.predict_masks(
+        masks, iou_pred, upscaled_embedding_robust, robust_token, token_att_map, gamma = self.predict_masks(
+            alpha,
             image_embeddings=image_embeddings,
             image_pe=image_pe,
             sparse_prompt_embeddings=sparse_prompt_embeddings,
@@ -140,16 +162,17 @@ class MaskDecoder(nn.Module):
         iou_pred = iou_pred[:, mask_slice]
                     
         # Prepare output
-        return masks, iou_pred, upscaled_embedding_robust, robust_token
+        return masks, iou_pred, upscaled_embedding_robust, robust_token, alpha, beta, gamma
 
     def predict_masks(
         self,
+        alpha,
         image_embeddings: torch.Tensor,
         image_pe: torch.Tensor,
         sparse_prompt_embeddings: torch.Tensor,
         dense_prompt_embeddings: torch.Tensor,
         robust_features: torch.Tensor,
-        clear: bool = True,
+        clear: bool = True
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Predicts masks. See 'forward' for more details."""
         
@@ -178,8 +201,20 @@ class MaskDecoder(nn.Module):
         src = src.transpose(1, 2).view(b, c, h, w)
         upscaled_embedding_decoder = self.output_upscaling(src) # decoder output mask features
 
-        robust_features = robust_features.repeat(b,1,1,1)       
-        mask_features = self.fourier_mask_features(upscaled_embedding_decoder, clear=clear) # pass original mask features through AMFG
+        robust_features = robust_features.repeat(b,1,1,1) 
+
+        gamma = self.degradation_prediction_mask(image_embeddings)[0] #add 
+
+        mask_features = self.fourier_mask_features(gamma, upscaled_embedding_decoder, clear=clear) # pass original mask features through AMFG
+
+        """
+        #add
+        if clear==False:
+            mask_features_clear = self.fourier_mask_features(upscaled_embedding_decoder, clear=True)
+            mask_features = alpha * mask_features + (1-alpha) * mask_features_clear
+        #
+        """
+
        
         upscaled_embedding_robust = mask_features + robust_features # fuse image features and mask features
 
@@ -206,7 +241,7 @@ class MaskDecoder(nn.Module):
         # Generate mask quality predictions
         iou_pred = self.iou_prediction_head(iou_token_out)
         
-        return masks, iou_pred, upscaled_embedding_robust, robust_token, None
+        return masks, iou_pred, upscaled_embedding_robust, robust_token, None, gamma
 
 # Lightly adapted from
 # https://github.com/facebookresearch/MaskFormer/blob/main/mask_former/modeling/transformer/transformer_predictor.py # noqa

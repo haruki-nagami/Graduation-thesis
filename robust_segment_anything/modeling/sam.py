@@ -103,7 +103,7 @@ class Sam(nn.Module):
         encoder_features = encoder_features[0] 
 
         outputs = []
-        degraded_index = int(0.5 * len(batched_input)) 
+        #degraded_index = int(0.5 * len(batched_input)) 
 
         for i, (image_record, curr_embedding, curr_encoder_features) in enumerate(zip(batched_input, image_embeddings, encoder_features)):
             if "point_coords" in image_record:
@@ -118,8 +118,9 @@ class Sam(nn.Module):
                         masks=image_record.get("mask_inputs", None),
                     )            
 
-            clear = True if i < degraded_index else False
-            low_res_masks, iou_predictions, robust_embeddings, robust_token = self.mask_decoder( 
+            #clear = True if i < degraded_index else False
+            clear = False
+            low_res_masks, iou_predictions, robust_embeddings, robust_token, alpha, beta, gamma = self.mask_decoder( 
                 image_embeddings=curr_embedding.unsqueeze(0),
                 image_pe=self.prompt_encoder.get_dense_pe(),
                 sparse_prompt_embeddings=sparse_embeddings,
@@ -136,8 +137,8 @@ class Sam(nn.Module):
                 original_size=image_record["original_size"],
             )
             
-            if i < degraded_index:
-              masks = masks > self.mask_threshold 
+            #if i < degraded_index:
+            #  masks = masks > self.mask_threshold 
 
             outputs.append(
                 {
@@ -146,6 +147,9 @@ class Sam(nn.Module):
                     "low_res_logits": low_res_masks,
                     "robust_embeddings": robust_embeddings,
                     "robust_token": robust_token,
+                    "alpha": alpha,
+                    "beta": beta,
+                    "gamma": gamma,
                 }
             )
 
@@ -179,7 +183,7 @@ class Sam(nn.Module):
                     masks=image_record.get("mask_inputs", None),
                 )            
 
-            low_res_masks, iou_predictions, robust_embeddings, robust_token = self.mask_decoder( 
+            low_res_masks, iou_predictions, robust_embeddings, robust_token, alfa, beta, gamma = self.mask_decoder( 
                 image_embeddings=curr_embedding.unsqueeze(0),
                 image_pe=self.prompt_encoder.get_dense_pe(),
                 sparse_prompt_embeddings=sparse_embeddings,
@@ -204,7 +208,10 @@ class Sam(nn.Module):
                     "iou_predictions": iou_predictions,
                     "low_res_logits": low_res_masks,
                     "robust_embeddings": robust_embeddings,
-                    "robust_token": robust_token
+                    "robust_token": robust_token,
+                    "alfa": alfa,
+                    "beta": beta,
+                    "gamma": gamma,
                 }
             )
 

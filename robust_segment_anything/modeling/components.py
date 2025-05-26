@@ -3,6 +3,51 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .common import LayerNorm2d
 
+#add
+class DegradationPredictBlock(nn.Module):
+    def __init__(self, emb, channels):
+        super(DegradationPredictBlock, self).__init__()
+        self.fc1=nn.Linear(emb*emb*channels,1)
+        self.sigmoid=nn.Sigmoid()
+
+    def forward(self, x):
+        batch_size, dim, h, w = x.size()
+        input_image = x.view(batch_size, dim*h*w)
+        output_image = self.fc1(input_image)
+        prediction = self.sigmoid(output_image)
+        return prediction
+#
+
+#add
+class DegradationPredictBlock_final_image(nn.Module):
+    def __init__(self, emb, channels):
+        super(DegradationPredictBlock_final_image, self).__init__()
+        self.fc2=nn.Linear(emb*emb*channels,1)
+        self.sigmoid=nn.Sigmoid()
+
+    def forward(self, x):
+        batch_size, dim, h, w = x.size()
+        input_image = x.view(batch_size, dim*h*w)
+        output_image = self.fc2(input_image)
+        prediction = self.sigmoid(output_image)
+        return prediction
+#
+
+#add
+class DegradationPredictBlock_mask(nn.Module):
+    def __init__(self, emb, channels):
+        super(DegradationPredictBlock_mask, self).__init__()
+        self.fc2=nn.Linear(emb*emb*channels,1)
+        self.sigmoid=nn.Sigmoid()
+
+    def forward(self, x):
+        batch_size, dim, h, w = x.size()
+        input_image = x.view(batch_size, dim*h*w)
+        output_image = self.fc2(input_image)
+        prediction = self.sigmoid(output_image)
+        return prediction
+#
+
 class MaskFeatureBlock(nn.Module):
     def __init__(self, transformer_dim):
         super(MaskFeatureBlock, self).__init__()        
@@ -17,12 +62,13 @@ class MaskFeatureBlock(nn.Module):
             nn.Conv2d(transformer_dim // 4, transformer_dim // 8, 3, 1, 1)
         )
 
-    def forward(self, x, clear=True):
+    def forward(self, gamma , x, clear=False):
         if not clear:
-            x = self.dnc_block_combined(x)
-            x = self.fgm_block(x)                
-            x = self.conv_layer(x)   
+            x1 = self.dnc_block_combined(x)
+            x1 = self.fgm_block(x1)                
+            x1 = self.conv_layer(x1)   
             
+        x =  gamma * x1 + (1-gamma) * x #add
         output = self.downsample_layer(x)
         return output
 
@@ -40,12 +86,13 @@ class FirstLayerFeatureBlock(nn.Module):
             nn.ConvTranspose2d(transformer_dim, transformer_dim // 8, kernel_size=2, stride=2)
         )
 
-    def forward(self, x, clear=True):
+    def forward(self, alpha, x, clear=False):
         if not clear:
-            x = self.dnc_block_combined(x)
-            x = self.fgm_block(x)                
-            x = self.conv_layer(x)   
+            x1 = self.dnc_block_combined(x)
+            x1 = self.fgm_block(x1)                
+            x1 = self.conv_layer(x1)   
 
+        x =  alpha * x1 + (1-alpha) * x #add
         output = self.upsample_layer(x)
         return output
 
@@ -62,12 +109,13 @@ class LastLayerFeatureBlock(nn.Module):
             nn.ConvTranspose2d(transformer_dim, transformer_dim // 8, kernel_size=2, stride=2)
         )
 
-    def forward(self, x, clear=True):
+    def forward(self, beta, x, clear=False):
         if not clear:
-            x = self.dnc_block_combined(x)
-            x = self.fgm_block(x)                
-            x = self.conv_layer(x)   
+            x1 = self.dnc_block_combined(x)
+            x1 = self.fgm_block(x1)                
+            x1 = self.conv_layer(x1)   
 
+        x = beta * x1 + (1-beta) * x #add
         output = self.upsample_layer(x)
         return output
 

@@ -1,3 +1,5 @@
+# dos2unix download.sh
+
 mkdir all_data
 cd all_data
 
@@ -40,30 +42,31 @@ wget https://huggingface.co/robustsam/robustsam/resolve/main/dataset/test/masks.
 unzip masks.zip
 cd ..
 
-echo " "
-echo " ##############################################################################################"
-echo "=> Start downloading extra COCO dataset <=="
-echo " ##############################################################################################"
-echo " "
-mkdir coco
-cd coco
-wget https://huggingface.co/robustsam/robustsam/resolve/main/dataset/coco/clear.zip
-unzip clear.zip
-wget https://huggingface.co/robustsam/robustsam/resolve/main/dataset/coco/masks.zip
-unzip masks.zip
-cd ..
 
-echo " "
-echo " ##############################################################################################"
-echo "=> Start downloading extra LVIS dataset <=="
-echo " ##############################################################################################"
-echo " "
-mkdir lvis
-cd lvis
-wget https://huggingface.co/robustsam/robustsam/resolve/main/dataset/lvis/clear.zip
-unzip clear.zip
-wget https://huggingface.co/robustsam/robustsam/resolve/main/dataset/lvis/masks.zip
-unzip masks.zip
-cd ..
+#echo " "
+#echo " ##############################################################################################"
+#echo "=> Start downloading extra COCO dataset <=="
+#echo " ##############################################################################################"
+#echo " "
+#mkdir coco
+#cd coco
+#wget https://huggingface.co/robustsam/robustsam/resolve/main/dataset/coco/clear.zip
+#unzip clear.zip
+#wget https://huggingface.co/robustsam/robustsam/resolve/main/dataset/coco/masks.zip#
+#unzip masks.zip
+#cd ..
+
+#echo " "
+#echo " ##############################################################################################"
+#echo "=> Start downloading extra LVIS dataset <=="
+#echo " ##############################################################################################"
+#echo " "
+#mkdir lvis
+#cd lvis
+#wget https://huggingface.co/robustsam/robustsam/resolve/main/dataset/lvis/clear.zip
+#unzip clear.zip
+#wget https://huggingface.co/robustsam/robustsam/resolve/main/dataset/lvis/masks.zip
+#unzip masks.zip
+#cd ..
 
 cd ..
